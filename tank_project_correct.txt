@@ -1,0 +1,564 @@
+#lang racket
+(require (only-in racket/gui play-sound))
+(require 2htdp/image)
+(require 2htdp/universe)
+(require lang/posn)
+; you could require r sound
+
+; Anthony Ovanessians
+
+; Globals
+
+; width of the BOARD
+(define WIDTH 650)
+
+; height of the BOARD
+(define HEIGHT 650)
+
+; height of the white scoreboard
+(define SCBOHE (* (/ 1 6) HEIGHT))
+
+; the background
+(define BOARD (place-images
+               (list
+               (rectangle (+ 50 WIDTH) SCBOHE 'solid 'white)
+               (scale 0.2 .)
+               (scale 0.2 .)
+               (scale 0.2 .)
+               (scale 0.2 .)
+               (scale 0.2 .)
+               (scale 0.1 .)
+             (scale 0.2  .)
+             (scale 0.2  .)
+            (scale 0.4 .)
+            .
+             .
+            .
+            (scale 0.3.))
+               
+               (list
+                (make-posn 300 0)
+                (make-posn 40 125)
+                (make-posn 200 500)
+                (make-posn 100 300)
+                (make-posn 300 425)
+                (make-posn 500 225)
+                (make-posn 350 150)
+                (make-posn 200 150)
+                (make-posn 323 250)
+                (make-posn 100 560)
+                (make-posn 490 325)
+                (make-posn 550 500)
+                (make-posn 100 400)
+                (make-posn 560 100))
+            (rectangle WIDTH HEIGHT 'solid 'tan)))
+
+; width of tanks
+(define tkW 40)
+
+; height of tanks
+(define tkH 20)
+
+; image of tank1
+(define tk1 (overlay
+               (beside (rectangle (/ tkW 2) (/ tkH 2) 'solid (color 0 200 100)) (rectangle (/ tkW 4) (/ tkH 4) 'solid (color 0 200 100)))
+               (rectangle tkW tkH 'solid 'darkgreen)))
+
+; image of tank2
+;(rectangle (/ tkW 2) (/ tkH 2) 'solid 'black)
+(define tk2 (overlay
+               (beside (rectangle (/ tkW 4) (/ tkH 4) 'solid 'black)(rectangle (/ tkW 2) (/ tkH 2) 'solid 'black))
+               (rectangle tkW tkH 'solid 'brown)))
+
+; speed of tanks
+(define TK-SPEED 7.5)
+
+; max number of shells inside list of shells 1 and 2
+(define MAXAMMO 1000)
+
+; net-velocity of shell
+(define net-velocity 10)
+
+; width of shell
+(define SHELLW 10)
+
+; heigh of shell
+(define SHELLH 5)
+
+; You can call this (define-struct Game (tank1 tank2 score-1 score-2 los1 los2 lokey musicstate)).
+; You do not have to call this WS (WorldState)
+; WorldState
+; This structure has what our game is.
+; los1 is a list of shells from tank 1
+; los2 is a list of shells from tank 2
+; tank1 is a tank structure
+; tank2 is a tank structure
+; score-1 is a number, the score of tank 1
+; score-2 is a number, the score of tank 2
+; lokey is a list of keys
+; musicstate is a number
+(define-struct WS (tank1 tank2 score-1 score-2 los1 los2 lokey musicstate))
+
+; If you change only the tank1 parameter then use this function, when doing make-WS.
+(define (change-tank1 new-tank1 ws)
+  (make-WS new-tank1 (WS-tank2 ws) (WS-score-1 ws) (WS-score-2 ws) (WS-los1 ws) (WS-los2 ws) (WS-lokey ws) (WS-musicstate ws) ))
+
+; If you change only the tank2 parameter then use this function, when doing make-WS.
+(define (change-tank2 new-tank2 ws)
+  (make-WS (WS-tank1 ws) new-tank2 (WS-score-1 ws) (WS-score-2 ws) (WS-los1 ws) (WS-los2 ws) (WS-lokey ws) (WS-musicstate ws) ))
+
+; If you change only the score-1 parameter then use this function, when doing make-WS.
+(define (change-score1 new-score1 ws)
+  (make-WS (WS-tank1 ws) (WS-tank2 ws) new-score1 (WS-score-2 ws) (WS-los1 ws) (WS-los2 ws) (WS-lokey ws) (WS-musicstate ws)  ))
+
+; If you change only the score-2 parameter then use this function, when doing make-WS.
+(define (change-score2 new-score2 ws)
+  (make-WS (WS-tank1 ws) (WS-tank2 ws) (WS-score-1 ws) new-score2 (WS-los1 ws) (WS-los2 ws) (WS-lokey ws) (WS-musicstate ws)  ))
+
+; If you change only the los1 parameter then use this function, when doing make-WS.
+(define (change-los1 new-los1 ws)
+  (make-WS (WS-tank1 ws) (WS-tank2 ws) (WS-score-1 ws) (WS-score-2 ws) new-los1 (WS-los2 ws) (WS-lokey ws) (WS-musicstate ws) ))
+
+; If you change only the los2 parameter then use this function, when doing make-WS.
+(define (change-los2 new-los2 ws)
+  (make-WS (WS-tank1 ws) (WS-tank2 ws) (WS-score-1 ws) (WS-score-2 ws) (WS-los1 ws) new-los2 (WS-lokey ws) (WS-musicstate ws) ))
+
+; If you change only the lokey parameter then use this function, when doing make-WS.
+(define (change-lokey new-lokey ws)
+  (make-WS (WS-tank1 ws) (WS-tank2 ws) (WS-score-1 ws) (WS-score-2 ws) (WS-los1 ws) (WS-los2 ws) new-lokey (WS-musicstate ws) ))
+
+; If you change only the musicstate parameter then use this function, when doing make-WS.
+(define (change-musicstate new-musicstate ws)
+  (make-WS (WS-tank1 ws) (WS-tank2 ws) (WS-score-1 ws) (WS-score-2 ws) (WS-los1 ws) (WS-los2 ws)  (WS-lokey ws) new-musicstate ))
+
+; tank
+; This define-struct has what our tank is.
+; x and y are the coordinates of the tank
+; ang is the angle of rotation of the turret
+(define-struct tank (x y ang))
+
+; SHELL
+; This define-struct has what our SHELL is.
+; x and y are the coordinates of the shell1
+; dx is the SHELL's velocity in the x-direction , a number
+; dy is the SHELL's velocity in the y-direction , a number
+; color is SHELL's color, a string
+(define-struct SHELL (x y dx dy color))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;; render stuff starts here ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; WorldState -> Image
+; render is the render-expr of the to-draw function
+; The render fuction uses function composition in order to call all the functions used inside the render function.
+; functions used inside render function: place-score1, place-score2, place-tank1, place-tank2, place-SHELL1s, place-SHELL2s
+; All of these functions above need a scene in order to place their images. This scene is the BOARD.
+(define (render ws)
+  (place-score1 (WS-score-1 ws)
+                (place-score2 (WS-score-2 ws)
+                              (place-tank1 (WS-tank1 ws)
+                                           (place-tank2 (WS-tank2 ws)
+                                                        (place-SHELL1s (WS-los1 ws)
+                                                                       (place-SHELL2s (WS-los2 ws)
+                                                                                      BOARD)))))))
+
+; Image -> Image
+; Draws tank1 atop the image img
+; (tank-x tank) is the x-coordinate of the tank.
+; (tank-y tank) is the y-coordinate of the tank.
+; In both cases the tank is tank1
+; img is the BOARD
+(define (place-tank1 tank img)
+  (place-image (overlay
+                (rotate (tank-ang tank) (beside (rectangle (/ tkW 2) (/ tkH 2) 'solid (color 0 200 100)) (rectangle (/ tkW 4) (/ tkH 4) 'solid (color 0 200 100))))
+                (rectangle tkW tkH 'solid 'darkgreen))
+               (tank-x tank)
+               (tank-y tank) img))
+
+; Image -> Image
+; Draws tank1 atop the image img
+; (tank-x tank) is the x-coordinate of the tank.
+; (tank-y tank) is the y-coordinate of the tank.
+; In both cases the tank is tank2
+; img is the BOARD
+(define (place-tank2 tank img)
+  (place-image (overlay
+               (rotate (tank-ang tank) (beside (rectangle (/ tkW 4) (/ tkH 4) 'solid 'black)(rectangle (/ tkW 2) (/ tkH 2) 'solid 'black)))
+               (rectangle tkW tkH 'solid 'brown))
+               (tank-x tank)
+               (tank-y tank) img))
+
+; List of SHELL1s, Image -> Image
+; Draws the shells of tank1 atop the Image img
+; shells is the list of shells. In this case it is los1.
+; img is the BOARD
+; place-SHELL1s foldl's the place-SHELL1 function, which draws the SHELL on the screen whenever there is a SHELL in los1
+(define (place-SHELL1s shells img) (foldl place-SHELL1 img shells))
+
+; SHELL, Image -> Image
+; Draws a shell sh atop the image img
+; img is the BOARD
+(define (place-SHELL1 sh img)
+  (place-image (rectangle SHELLW SHELLH 'solid (SHELL-color sh))
+               (SHELL-x sh) (SHELL-y sh) img))
+
+; List of SHELL2s, Image -> Image
+; Draws the shells of tank2 atop the Image img
+; shells is the list of shells. In this case it is los2.
+; img is the BOARD
+; place-SHELL2s foldl's the place-SHELL1 function, which draws the SHELL on the screen whenever there is a SHELL in los2.
+(define (place-SHELL2s shells img) (foldl place-SHELL2 img shells))
+
+; SHELL, Image -> Image
+; Draws a shell sh atop the image img
+; img is the BOARD
+(define (place-SHELL2 sh img)
+  (place-image (rectangle SHELLW SHELLH 'solid (SHELL-color sh))
+               (SHELL-x sh) (SHELL-y sh) img))
+
+; Number, Image -> Image
+; Draws the number num atop the image img
+; img is the BOARD
+; num is the (WS-score-1 ws) number
+(define (place-score1 num img)
+(place-image
+(beside (text "score: " 40 (color 0 200 100))
+        (text (number->string num) 40 (color 0 200 100)))
+85 24
+
+img))
+
+; Number, Image -> Image
+; Draws the number num atop the image img
+; img is the BOARD
+; num is the (WS-score-2 ws) number
+(define (place-score2 num img)
+  (place-image
+(beside (text "score: " 40 'brown)
+        (text (number->string num) 40 'brown))
+535 24
+
+img))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;; music stuff starts here ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; WorldState -> WorldState
+; Racket runs tock 28 times per second
+; 28 times 60 = 1,680 seconds = 1 minute
+; 1,680 seconds times 60 = 100800 seconds = 1 hour
+; If (WS-musicstate ws) equals 0 then play the music and add1 to the (WS-musicstate ws).
+; If (WS-musicstate ws) is less than 100800 add1 to the (WS-musicstate ws). I do this so that we can kepp track of time after (WS-musicstate ws) is greater than zero.
+; If (WS-musicstate ws) is greater than 100800 change the (WS-musicstate ws) back to zero. This resets the song.
+; The music is composed by Jack Wall
+; Got the Youtube video from the channel: Lt.Crunch video: Call of Duty: Black ops 2 Adrenaline (1 hour)
+; Link for Youtube video: https://www.youtube.com/watch?v=gZPwuQAcUNQ&t=453s
+(define (music ws)
+  (cond
+    [(= (WS-musicstate ws) 0) (begin (play-sound "BO2-music.wav" #t) (change-musicstate (add1 (WS-musicstate ws)) ws))]
+    [(< (WS-musicstate ws) 100800) (change-musicstate (add1 (WS-musicstate ws)) ws)]
+    [(> (WS-musicstate ws) 100800) (change-musicstate 0 ws)]))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;; score stuff starts here ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; Examples of ormap in use:
+; (ormap positive? '(1 2 a)) -> #t
+; (ormap positive? '(-1 2 a)) -> #t
+; (ormap positive? '(1 b a)) -> #t
+; (ormap positive? '(-1 a a)) -> error, expected: real? given: 'a
+; (ormap positive? '(-1 -2 -4)) -> #f
+; (ormap positive? '(b 2 a)) -> error, expected: real? given: 'b
+; (ormap + '(1 2 3) '(4 5 6)) -> 5 Takes the first number from each list and adds them.
+
+; WorldState -> Number
+; Displays the distance between the shell shot from tank1 and tank2.
+; Then we make a new line.
+; (if (ormap (lambda (s) (< (distance-by-num tx ty (SHELL-x s) (SHELL-y s)) 10)) los) (+ 1 (WS-score-1 ws)) (WS-score-1 ws))
+; What this says is that whenever the distance between tank2 and the shell shot form tank1 is less than 10 add 1 to score 1.
+; otherwise keep the same score
+(define (is-a-hit1 ws)
+  (local [(define tx (tank-x (WS-tank2 ws)))
+          (define ty (tank-y (WS-tank2 ws)))
+          (define los (WS-los1 ws))]
+    (begin (display
+            (if (empty? los) 0 (distance-by-num tx ty (SHELL-x (first los)) (SHELL-y (first los)))))
+           (display "\n")
+           (if (ormap (lambda (s) (< (distance-by-num tx ty (SHELL-x s) (SHELL-y s)) 10)) los)
+               (+ 1 (WS-score-1 ws))
+               (WS-score-1 ws)))))
+
+
+; WorldState -> Number
+; Displays the distance between the shell shot from tank2 and tank1.
+; Then we make a new line.
+; (if (ormap (lambda (s) (< (distance-by-num tx ty (SHELL-x s) (SHELL-y s)) 10)) los) (+ 1 (WS-score-2 ws)) (WS-score-2 ws))
+; What this says is that whenever the distance between tank1 and the shell shot from tank2 is less than 10 add 1 to score 2.
+; otherwise keep the same score
+(define (is-a-hit2 ws)
+  (local [(define tx (tank-x (WS-tank1 ws)))
+          (define ty (tank-y (WS-tank1 ws)))
+          (define los (WS-los2 ws))]
+    (begin (display
+            (if (empty? los) 0 (distance-by-num tx ty (SHELL-x (first los)) (SHELL-y (first los)))))
+           (display "\n")
+           (if (ormap (lambda (s) (< (distance-by-num tx ty (SHELL-x s) (SHELL-y s)) 10)) los)
+           (+ 1 (WS-score-2 ws))
+           (WS-score-2 ws)))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;; key handler stuff starts here ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+; WorldState, String -> WorldState
+; Adds key to list of keys and checks if the key is already in the list of keys.
+; If the key is in the list of keys then keep the list of keys the same.
+; If the key is not in the list of keys then add the key to the list of keys (cons key (WS-lokey ws)).
+; I am only changing the list of keys, therefore I can use the change-lokey function instead of putting the whole WorldState.
+(define (key-handler ws key)
+  (change-lokey
+   (if (member key (WS-lokey ws)) (WS-lokey ws) (cons key (WS-lokey ws))) ws))
+
+
+; WorldState -> WorldState
+; Looks inside the list of keys and moves tank1
+; Uses the function move-helper-helper1
+(define (move-tank1 ws)
+  (make-WS (move-player-helper1 (WS-lokey ws) (WS-tank1 ws))
+           (WS-tank2 ws) (WS-score-1 ws) (WS-score-2 ws) (WS-los1 ws) (WS-los2 ws) (WS-lokey ws) (WS-musicstate ws) ))
+
+; WorldState -> WorldState
+; Looks inside the list of keys and moves tank2
+; Uses the function move-player-helper2
+(define (move-tank2 ws)
+  (make-WS (WS-tank1 ws) (move-player-helper2 (WS-lokey ws) (WS-tank2 ws))
+           (WS-score-1 ws) (WS-score-2 ws) (WS-los1 ws) (WS-los2 ws) (WS-lokey ws) (WS-musicstate ws) ))
+
+; WorldState -> WorldState
+; Looks inside the list of keys and shoots the shells from los1, when shoot-helper1 is called.
+; (define-struct WS (tank1 tank2 score-1 score-2 los1 los2 lokey))
+(define (sho1 ws)
+  (make-WS (WS-tank1 ws) (WS-tank2 ws) (is-a-hit1 ws) (WS-score-2 ws)
+           (move-shells1 (shoot-helper1 (WS-tank1 ws) (WS-los1 ws) (WS-lokey ws))) (WS-los2 ws) (WS-lokey ws) (WS-musicstate ws) ))
+
+
+
+; tank, los, lokey -> los
+; (define-struct SHELL (x y dx dy color))
+; If the length of the list of shells is less than MAXAMMO (a number) and the "r" is a key in the list of keys then,
+; put a new shell in the list of shells 1 that is fired from the tank1's x and y position and
+; where the dx (velocity in the x-direction) where dx = cos(the angle of tank1) * the net-velocity
+; where the dy (velocity in the y-direction) where dy = sin(the angle of tank1) * the net-velocity
+; I have to convert the angle from degrees to radians and subtract the tank1 angle by 360 because DrRacket does things in the clockwise direction and because I want the shells to initially shoot to the right.
+; If the angle were to be positive then if I were to move the turret to 270 degrees, the angle at which the shell would could shoot out would be 90 degrees.
+; otherwise just produce the list of shell 1's
+(define (shoot-helper1 tank los lokey)
+               (if (and (< (length los) MAXAMMO)(member "r" lokey))
+                   (cons (make-SHELL (tank-x tank) (tank-y tank)
+                                                  (* (cos (degrees->radians (- 360(tank-ang tank)))) net-velocity)
+                                                  (* (sin (degrees->radians (- 360(tank-ang tank)))) net-velocity) 'black) los) los))
+; los -> los
+; Moves each shell
+; Map's the move-shell1 function to make a new list of shell 1's 
+(define (move-shells1 los)
+  (map move-shell1 los))
+
+; shell -> shell
+; Makes a new shell which adds the dx to the x-coordinate and the dy to the y-coordinate, where
+; the x-coordinate is the (tank-x tank) and the y-coordinate is the (tank-y tank).
+(define (move-shell1 sh)
+  (make-SHELL (+ (SHELL-dx sh)(SHELL-x sh)) (+ (SHELL-dy sh)(SHELL-y sh)) (SHELL-dx sh) (SHELL-dy sh) (SHELL-color sh)))
+
+; WorldState -> WorldState
+; Looks inside the list of keys and shoots the shells from los2, when shoot-helper2 is called.
+; (define-struct WS (tank1 tank2 score-1 score-2 los1 los2 lokey))
+(define (sho2 ws)
+  (make-WS (WS-tank1 ws) (WS-tank2 ws) (WS-score-1 ws) (is-a-hit2 ws) (WS-los1 ws)
+            (move-shells2 (shoot-helper2 (WS-tank2 ws) (WS-los2 ws) (WS-lokey ws))) (WS-lokey ws) (WS-musicstate ws) ))
+
+; tank, los, lokey -> los
+;(define-struct SHELL (x y dx dy color))
+; tank, los, lokey -> los
+; (define-struct SHELL (x y dx dy color))
+; If the length of the list of shells is less than MAXAMMO (a number) and the " " is a key in the list of keys then,
+; put a new shell in the list of shells 2 that is fired from the tank2's x and y position and
+; where the dx (velocity in the x-direction) where dx = cos(the angle of tank2) * the net-velocity
+; where the dy (velocity in the y-direction) where dy = sin(the angle of tank2) * the net-velocity
+; I have to convert the angle from degrees to radians and subtract the tank1 angle by 180 because DrRacket does things in the clockwise direction and because I want the shells to initially shoot to the left.
+; If the angle were to be positive then if I were to move the turret to 180 degrees, the angle at which the shell would could shoot out would be 360 degrees.
+; otherwise just produce the list of shell 2's
+(define (shoot-helper2 tank los lokey)
+                 (if (and (< (length los) MAXAMMO)(member " " lokey))
+                  (cons (make-SHELL (tank-x tank) (tank-y tank)
+                                                  (* (cos (degrees->radians (- 180 (tank-ang tank)))) net-velocity)
+                                                  (* (sin (degrees->radians (- 180 (tank-ang tank)))) net-velocity) 'black) los) los))
+; los -> los
+; Moves each shell
+; Map's the move-shell1 function to make a new list of shell 2's 
+(define (move-shells2 los)
+  (map move-shell2 los))
+
+; shell -> shell
+; Makes a new shell which adds the dx to the x-coordinate and the dy to the y-coordinate, where
+; the x-coordinate is the (tank-x tank) and the y-coordinate is the (tank-y tank).
+(define (move-shell2 sh)
+  (make-SHELL (+ (SHELL-dx sh)(SHELL-x sh)) (+ (SHELL-dy sh)(SHELL-y sh)) (SHELL-dx sh) (SHELL-dy sh) (SHELL-color sh))) 
+  
+; List of Strings (keys), tank (player position, angle of rotation) -> tank (maybe new position, maybe new rotation)
+; Moves tank1 using these functions which are inside the move-player-helper1 by using function composition.
+(define (move-player-helper1 lokey tank)
+          (move-turret-ccw1 lokey
+                            (move-turret-cw1 lokey
+                                             (move-player-left1 lokey
+                                                                (move-player-right1 lokey
+                                                                                    (move-player-down1 lokey
+                                                                                                       (move-player-up1 lokey tank)))))))
+  
+; List of Strings, tank -> tank
+; If the y-coordinate of the tank is greater than the white scoreboard's height minus (40 minus the tank speed) (this makes a boundary) and "w" is in the list of keys then,
+; move tank1 up by TK-SPEED
+; If I were to subtract by only TK-SPEED then the boundary would be too far in and would hinder movement of tank1
+; Need to do 40 minus TK-SPEED so that the tank can get closer to the boundary without going past the boundary.
+(define (move-player-up1 lokey tank)
+  (if (and (> (tank-y tank) (- SCBOHE (- 40 TK-SPEED))) (member "w" lokey)) (make-tank (tank-x tank) (- (tank-y tank) TK-SPEED) (tank-ang tank))  tank))
+
+; List of Strings, tank -> tank
+; If the y-coordinate of the tank is less than the BOARD's height minus the tank speed (this makes a boundary) and "s" is in the list of keys then,
+; moves tank1 down by TK-SPEED
+; Need to subtract by TK-SPEED so that the tank will not go beyond the boundary.
+(define (move-player-down1 lokey tank)
+  (if (and (< (tank-y tank)(-  HEIGHT TK-SPEED))(member "s" lokey)) (make-tank (tank-x tank) (+ (tank-y tank) TK-SPEED) (tank-ang tank)) tank))
+
+; List of Strings, tank -> tank
+; If the x-coordinate of the tank is greater than the tank speed (this makes a boundary) and "a" is in the list of keys then,
+; moves tank1 to the left by TK-SPEED
+; Need to subtract by TK-SPEED so that the tank will not go beyond the boundary.
+(define (move-player-left1 lokey tank)
+  (if (and (> (tank-x tank) TK-SPEED)(member "a" lokey)) (make-tank (- (tank-x tank) TK-SPEED) (tank-y tank) (tank-ang tank)) tank))
+
+; List of Strings, tank -> tank
+; If the x-coordinate of the tank is less than the (width minus the tank speed) (this makes a boundary) and "d" is in the list of keys then,
+; moves tank1 to the right by TK-SPEED
+; Need to subtract by TK-SPEED so that the tank will not go beyond the boundary.
+(define (move-player-right1 lokey tank)
+  (if (and (< (tank-x tank) (- WIDTH TK-SPEED))(member "d" lokey)) (make-tank (+ (tank-x tank) TK-SPEED) (tank-y tank) (tank-ang tank))  tank))
+
+; List of Strings, tank -> tank
+; If "e" in the list of keys then
+; rotates the tank angle by -10 degrees.
+(define (move-turret-cw1 lokey tank)
+  (if (member "e" lokey) (make-tank (tank-x tank) (tank-y tank) (- (tank-ang tank) 10)) tank))
+
+; List of Strings, tank -> tank
+; If "q" in the list of keys then
+; rotates the tank angle by 10 degrees.
+(define (move-turret-ccw1 lokey tank)
+  (if (member "q" lokey) (make-tank (tank-x tank) (tank-y tank) (+ (tank-ang tank) 10)) tank))
+
+;;;;;;;;;;;;;;;;;; tank 2's controls start here ;;;;;;;;;;;;;;;;;
+
+; List of Strings (keys), tank (player position, angle of rotation) -> tank (maybe new position, maybe new rotation)
+; Moves tank2 using these functions which are inside the move-player-helper2 by using function composition.
+(define (move-player-helper2 lokey tank)
+          (move-turret-ccw2 lokey
+                            (move-turret-cw2 lokey
+                                             (move-player-left2 lokey
+                                                                (move-player-right2 lokey
+                                                                                    (move-player-down2 lokey
+                                                                                                       (move-player-up2 lokey tank)))))))
+
+
+; List of Strings, tank -> tank
+; If the y-coordinate of the tank is greater than the white scoreboard's height minus (40 minus the tank speed) (this makes a boundary) and "up" is in the list of keys then,
+; moves tank2 up by TK-SPEED
+; If I were to subtract by only TK-SPEED then the boundary would be too far in and would hinder movement of tank1
+; Need to do 40 minus TK-SPEED so that the tank can get closer to the boundary without going past the boundary.
+(define (move-player-up2 lokey tank)
+  (if (and (> (tank-y tank) (- SCBOHE (- 40 TK-SPEED))) (member "up" lokey)) (make-tank (tank-x tank) (- (tank-y tank) TK-SPEED) (tank-ang tank)) tank))
+
+; List of Strings, tank -> tank
+; If the y-coordinate of the tank is less than the BOARD's height minus the tank speed (this makes a boundary) and "down" is in the list of keys then,
+; moves tank2 down by TK-SPEED
+; Need to subtract by TK-SPEED so that the tank will not go beyond the boundary.
+(define (move-player-down2 lokey tank)
+  (if (and (< (tank-y tank)(-  HEIGHT TK-SPEED)) (member "down" lokey)) (make-tank (tank-x tank) (+ (tank-y tank) TK-SPEED) (tank-ang tank)) tank))
+
+; List of Strings, tank -> tank
+; If the x-coordinate of the tank is greater than the tank speed (this makes a boundary) and "left" is in the list of keys then,
+; moves tank2 to the left by TK-SPEED
+; Need to subtract by TK-SPEED so that the tank will not go beyond the boundary.
+(define (move-player-left2 lokey tank)
+  (if (and (> (tank-x tank) TK-SPEED) (member "left" lokey)) (make-tank (- (tank-x tank) TK-SPEED) (tank-y tank) (tank-ang tank)) tank))
+
+; List of Strings, tank -> tank
+; If the x-coordinate of the tank is less than the (width minus the tank speed) (this makes a boundary) and "right" is in the list of keys then,
+; moves tank1 to the right by TK-SPEED
+; Need to subtract by TK-SPEED so that the tank will not go beyond the boundary.
+(define (move-player-right2 lokey tank)
+  (if (and (< (tank-x tank) (- WIDTH TK-SPEED)) (member "right" lokey)) (make-tank (+ (tank-x tank) TK-SPEED) (tank-y tank) (tank-ang tank)) tank))
+
+; use PgUp or PgDn
+; List of Strings, tank -> tank
+; If "/" in the list of keys then
+; rotates the tank angle by -10 degrees.
+(define (move-turret-cw2 lokey tank)
+  (if (member "/" lokey) (make-tank (tank-x tank) (tank-y tank) (- (tank-ang tank) 10)) tank))
+
+; use PgUp or PgDn
+; List of Strings, tank -> tank
+; If "." in the list of keys then
+; rotates the tank angle by 10 degrees.
+(define (move-turret-ccw2 lokey tank)
+  (if (member "." lokey) (make-tank (tank-x tank) (tank-y tank) (+ (tank-ang tank) 10)) tank))
+
+; WorldState, String -> WorldState
+; Removes key from the list of keys
+; This only changes the list of keys therefore we can use the change-lokey function.
+(define (keyrelease-handler ws key)
+  (change-lokey
+   (filter (lambda (k) (not (string=? k key))) (WS-lokey ws)) ws))
+
+
+#|
+; list of shells -> list of shells
+(define (sh-filter1 los)
+  (filter (λ (sh) (or (>= (SHELL-x sh) 0) (<= (SHELL-x sh) (/ WIDTH 2)) (>= (SHELL-y sh) 0) (<= (SHELL-y sh) (/ HEIGHT 2)))) los))
+|#
+
+; WorldState -> WorldState
+; Whatever you put in the filter that is what you want to keep. So the lambda that I put is the stuff I want to keep. Anything else gets filtered out of the list.
+; For example, (filter (λ (sh) (< (distance-by-num (SHELL-x sh) (SHELL-y sh) (tank-x (WS-tank1 ws)) (tank-y (WS-tank1 ws))) HEIGHT)) (WS-los1 ws))
+; keeps the shells from los1 that have a distance from tank1 less than the HEIGHT of the BOARD. 
+(define (filter1 ws)
+  (change-los1 (filter (λ (sh) (< (distance-by-num (SHELL-x sh) (SHELL-y sh) (tank-x (WS-tank1 ws)) (tank-y (WS-tank1 ws))) HEIGHT)) (WS-los1 ws)) ws))
+
+; WorldState -> WorldState
+; Whatever you put in the filter that is what you want to keep. So the lambda that I put is the stuff I want to keep. Anything else gets filtered out of the list.
+; For example, (filter (λ (sh) (< (distance-by-num (SHELL-x sh) (SHELL-y sh) (tank-x (WS-tank2 ws)) (tank-y (WS-tank2 ws))) HEIGHT)) (WS-los2 ws))
+; keeps the shells from los2 that have a distance from tank2 less than the HEIGHT of the BOARD. 
+(define (filter2 ws)
+  (change-los2 (filter (λ (sh) (< (distance-by-num (SHELL-x sh) (SHELL-y sh) (tank-x (WS-tank2 ws)) (tank-y (WS-tank2 ws))) HEIGHT)) (WS-los2 ws)) ws))
+
+
+; WorldState -> WorldState
+; Move the tanks depending on what keys are pressed in the list of keys.
+; Shoots the shells depending on what key is pressed in the list of keys.
+; Uses function composition
+(define (tock ws)
+  (music(filter2(filter1(sho1(sho2(move-tank1(move-tank2 ws))))))))
+
+; Posn, Posn -> Number
+; Produce the distance between two posns
+(define (distance p q)
+(sqrt (+ (sqr (- (posn-x p) (posn-x q))) (sqr (- (posn-y p) (posn-y q))))))
+
+; Number, Number, Number, Number -> Number
+(define (distance-by-num x1 y1 x2 y2)
+(distance (make-posn x1 y1) (make-posn x2 y2)))
+
+; The initial WorldState
+; (define-struct WS (tank1 tank2 score-1 score-2 los1 los2 lokey musicstate))
+(define initial-WS
+  (make-WS
+   (make-tank 50 200 0) (make-tank 600 200 0) 0 0 '() '() '() 0))
+                            
+(big-bang initial-WS 
+  (to-draw render)
+  (on-tick tock)
+  (on-key key-handler)
+  (on-release keyrelease-handler))
